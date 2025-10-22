@@ -105,8 +105,8 @@ int_expenses as (
     )
     order by 1
 ),
-
-fct_customers as (
+--fct_customers
+customers as (
     select 
     lead_id,
     opportunity_id,
@@ -141,7 +141,7 @@ sales_team_metrics as (
         sum(iff(opportunity_id is not null,predicted_monthly_sub_value,0)) as predicted_monthly_conv_sub_value,
         sum(iff(stage_name = 'Closed Won',predicted_monthly_sub_value,0)) as predicted_monthly_cust_sub_value,
     
-    from fct_customers c 
+    from customers c 
     where first_touch_month >= '2024-01-01'
     group by 1,2
     order by 1,2
@@ -151,11 +151,15 @@ add_expenses as (
     select 
         c.*,
         e.expense_amount_usd,
+        round(predicted_monthly_cust_sub_value / e.expense_amount_usd,2) as MRR_CAC_multiple
     from sales_team_metrics c
     left join int_expenses e on first_touch_month = e.expense_month and c.sales_team = e.team 
     order by 1,2
 ),
+--end of fct_customers
 
+--below are some exploratory queries I ran against the above CTE's
+    
 --it stands to reason that a resturaunt chain with multiple locations should have more sales than resturaunts with only one sale, but this seems to not always be the case. That would be 
 --quite surprising if true. I only spent a couple minutes on this but that deserves some looking into. 
 buckets_exploration as (
@@ -164,7 +168,7 @@ buckets_exploration as (
         location_buckets,
         count(distinct opportunity_id),
         sum(iff(stage_name = 'Closed Won',predicted_monthly_sub_value,0)) / count(distinct opportunity_id)
-    from fct_customers 
+    from customers 
     where stage_name = 'Closed Won'
     and location_buckets is not null
     group by 1,2
@@ -181,7 +185,7 @@ marketplaces_explo as (
         sum(iff(stage_name = 'Closed Won',predicted_monthly_sub_value,0)),
         --this is a sort of opportunity cost metric. It multiples the conversion rate of a national cusine by the avg sub value
         (count(distinct (case when stage_name = 'Closed Won' then opportunity_id end)) / count(distinct lead_id)) * sum(iff(stage_name = 'Closed Won',predicted_monthly_sub_value,0))
-    from fct_customers 
+    from customers 
     where first_touch_month > '2024-01-01'
     group by 1
     having count(distinct lead_id) > 100
@@ -189,4 +193,4 @@ marketplaces_explo as (
 
 )
 
-select * from buckets_exploration
+select * from add_expenses
